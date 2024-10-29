@@ -1,0 +1,120 @@
+#include <Arduino.h>
+#include <Wire.h>
+#include <ESP32SPISlave.h>
+
+
+#define I2C_DEV_ADDR 0x55  //dirección I2C
+//definición de pines
+#define potPin 34         
+#define ledr 13         
+#define leda 12       
+#define ledv 14        
+
+ESP32SPISlave slave;
+
+//Configuraciones del Buffer
+static constexpr uint32_t BUFFER_SIZE {32};
+uint8_t spi_slave_tx_buf[BUFFER_SIZE];
+uint8_t spi_slave_rx_buf[BUFFER_SIZE];
+uint8_t cmd [8];
+
+uint8_t i = 0; //Variable de control
+
+//Valores de potenciómetro
+int potValue = 0;
+int mappot = 0; 
+
+void onRequest();
+void onReceive(int len);
+
+void ledTiempo(int led1);
+
+void setup() {
+  Serial.begin(115200);
+  Serial.setDebugOutput(true); 
+
+  //setup SPI
+  slave.setDataMode(SPI_MODE0);
+  slave.setQueueSize(1);
+  slave.begin(VSPI);
+
+  memset(spi_slave_tx_buf, 0, BUFFER_SIZE);
+  memset(spi_slave_rx_buf, 0, BUFFER_SIZE); 	
+
+  pinMode(ledr, OUTPUT);
+  pinMode(leda, OUTPUT);
+  pinMode(ledv, OUTPUT);
+
+  digitalWrite(ledr, LOW);
+  digitalWrite(leda, LOW);
+  digitalWrite(ledv, LOW);
+
+  Wire.onReceive(onReceive);
+  Wire.onRequest(onRequest);
+  Wire.begin((uint8_t)I2C_DEV_ADDR);    
+}
+
+void loop() {
+  //funcion bloqueante
+  slave.wait(spi_slave_rx_buf, spi_slave_tx_buf, BUFFER_SIZE);
+
+  while(slave.available()){
+    uint8_t valorLed = spi_slave_rx_buf[0];
+    uint16_t valorTiempo = (spi_slave_rx_buf[1] << 8) | spi_slave_rx_buf[2];
+
+    ledTiempo(valorLed);
+    delay(valorTiempo);
+    digitalWrite(ledr, LOW);
+    digitalWrite(leda, LOW);
+    digitalWrite(ledv, LOW);
+
+    Serial.println(valorTiempo);
+
+    slave.pop();
+  }  
+}
+
+
+void onRequest() {
+ if(i == 1) {
+  potValue = analogRead(potPin);
+  mappot = map(potValue, 0, 1023, 0, 255);
+  Wire.write(mappot);
+  i = 0;
+ }
+}
+
+void onReceive(int len) {
+  while (Wire.available())
+   {
+    uint8_t senal1 = Wire.read();  
+    if (senal1 == '1'){
+      i = 1;
+    }
+    else{
+      i = 0;
+    }
+   }       
+}
+   
+
+void ledTiempo(int led1){   
+    switch (led1) {
+      case 1:  // Encender LED rojo 
+        digitalWrite(ledr, HIGH);
+        digitalWrite(leda, LOW);
+        digitalWrite(ledv, LOW);
+        break;
+      case 2:  // Encender LED amarillo
+        digitalWrite(ledr, LOW);
+        digitalWrite(leda, HIGH);
+        digitalWrite(ledv, LOW);
+        break;
+      case 3:  // Encender LED verde
+        digitalWrite(ledr, LOW);
+        digitalWrite(leda, LOW);
+        digitalWrite(ledv, HIGH);
+        break;
+  }
+} 
+
